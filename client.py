@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 import pymysql
+import sqlparse
 
 app = Flask(__name__)
 
@@ -10,11 +11,23 @@ db_config = {
     "database": "bing_local"
 }
 
+#check whether the statement is safe
+def is_safe_sql(sql):
+    parsed = sqlparse.parse(sql)
+    for stmt in parsed:
+        if stmt.get_type() != 'SELECT':
+            return False
+    return True
+
 @app.route("/query", methods=["POST"])
 def query_movies():
     #get sql query from request
     sql = request.json.get("query", "")  
 
+    #防注入
+    if not is_safe_sql(sql):
+        return jsonify({"error": "Only SELECT statements are allowed."}), 400
+        
     #connect to mysql and execute query
     connection = pymysql.connect(**db_config)
     with connection.cursor() as cursor:
