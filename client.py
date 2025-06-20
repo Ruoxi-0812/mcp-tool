@@ -1,6 +1,9 @@
 from flask import Flask, request, jsonify
 import pymysql
 import sqlparse
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives import hashes, serialization
+import base64
 
 app = Flask(__name__)
 
@@ -10,6 +13,10 @@ db_config = {
     "password": "Wrx050812@",
     "database": "bing_local"
 }
+
+#load private key
+with open("private_key.pem", "rb") as key_file:
+    private_key = serialization.load_pem_private_key(key_file.read(), password=None)
 
 #check whether the statement is safe
 def is_safe_sql(sql):
@@ -21,8 +28,24 @@ def is_safe_sql(sql):
 
 @app.route("/query", methods=["POST"])
 def query_movies():
-    #get sql query from request
-    sql = request.json.get("query", "")  
+
+    #加密
+    encrypted_b64 = request.json.get("encrypted_query", "")
+    try:
+        encrypted = base64.b64decode(encrypted_b64)
+        plaintext = private_key.decrypt(
+            encrypted,
+            padding.OAEP(
+                mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                algorithm=hashes.SHA256(),
+                label=None
+            ))
+        sql = plaintext.decode("utf-8")
+
+        print("Decrypted:", sql)
+        
+    except Exception as e:
+        return jsonify({"error": "Decryption failed", "details": str(e)}), 400
 
     #防注入
     if not is_safe_sql(sql):
